@@ -51,6 +51,7 @@ For more information, please refer to <http://unlicense.org/>
 #define DMACH2   0x20007200
 #define DMACH3   0x20007300
 //...
+#define DMACH(n) (DMACH0 + (n)*0x100)
 //Each DMA channel has some associated registers, but only CS (control and status), CONBLK_AD (control block address), and DEBUG are writeable
 //DMA is started by writing address of the first Control Block to the DMA channel's CONBLK_AD register and then setting the ACTIVE bit inside the CS register (bit 0)
 //Note: DMA channels are connected directly to peripherals, so physical addresses should be used (affects control block's SOURCE, DEST and NEXTCONBK addresses).
@@ -76,7 +77,7 @@ void writeBitmasked(volatile uint32_t *dest, uint32_t mask, uint32_t value) {
     uint32_t cur = *dest;
     uint32_t new = (cur & (~mask)) | (value & mask);
     *dest = new;
-    *dest = new; //best to be safe 
+    *dest = new; //added safety for when crossing memory barriers.
 }
 
 struct DmaChannelHeader {
@@ -182,6 +183,7 @@ volatile uint32_t* mapPeripheral(int memfd, int addr) {
 }
 
 int main() {
+    int dmaChNum = 5;
     //First, open the linux device, /dev/mem
     //dev/mem provides access to the physical memory of the entire processor+ram
     //This is needed because Linux uses virtual memory, thus the process's memory at 0x00000000 will NOT have the same contents as the physical memory at 0x00000000
@@ -219,11 +221,11 @@ int main() {
     void *virtCbPage, *physCbPage;
     makeVirtPhysPage(&virtCbPage, &physCbPage);
     
-    //dedicate the first 8 bytes of this page to holding the cb.
+    //dedicate the first 8 words of this page to holding the cb.
     struct DmaControlBlock *cb1 = (struct DmaControlBlock*)virtCbPage;
     
     //fill the control block:
-    cb1->TI = DMA_CB_TI_SRC_INC | DMA_CB_TI_DEST_INC; //after each 4-byte copy, we want to increment the source and destination address of the copy, otherwise we'll be copying to the same address.
+    cb1->TI = DMA_CB_TI_SRC_INC | DMA_CB_TI_DEST_INC; //after each byte copied, we want to increment the source and destination address of the copy, otherwise we'll be copying to the same address.
     cb1->SOURCE_AD = (uint32_t)physSrcPage; //set source and destination DMA address
     cb1->DEST_AD = (uint32_t)physDestPage;
     cb1->TXFR_LEN = 12; //transfer 12 bytes
@@ -233,10 +235,10 @@ int main() {
     printf("destination was initially: '%s'\n", (char*)virtDestPage);
     
     //enable DMA channel (it's probably already enabled, but we want to be sure):
-    writeBitmasked(dmaBaseMem + DMAENABLE - DMA_BASE, 1 << 3, 1 << 3);
+    writeBitmasked(dmaBaseMem + DMAENABLE - DMA_BASE, 1 << dmaChNum, 1 << dmaChNum);
     
     //configure the DMA header to point to our control block:
-    volatile struct DmaChannelHeader *dmaHeader = (volatile struct DmaChannelHeader*)(dmaBaseMem + DMACH3 - DMA_BASE);
+    volatile struct DmaChannelHeader *dmaHeader = (volatile struct DmaChannelHeader*)(dmaBaseMem + DMACH(dmaChNum) - DMA_BASE);
     dmaHeader->CS = DMA_CS_RESET; //make sure to disable dma first.
     sleep(1); //give time for the reset command to be handled.
     dmaHeader->DEBUG = DMA_DEBUG_READ_ERROR | DMA_DEBUG_FIFO_ERROR | DMA_DEBUG_READ_LAST_NOT_SET_ERROR; // clear debug error flags
