@@ -183,6 +183,10 @@ volatile uint32_t* mapPeripheral(int memfd, int addr) {
 }
 
 int main() {
+    //cat /sys/module/dma/parameters/dmachans gives a bitmask of DMA channels that are not used by GPU. Results: ch 1, 3, 6, 7 are reserved.
+    //dmesg | grep "DMA"; results: Ch 2 is used by SDHC host
+    //ch 0 is known to be used for graphics acceleration
+    //Thus, applications can use ch 4, 5, or the LITE channels @ 8 and beyond.
     int dmaChNum = 5;
     //First, open the linux device, /dev/mem
     //dev/mem provides access to the physical memory of the entire processor+ram
@@ -238,7 +242,7 @@ int main() {
     writeBitmasked(dmaBaseMem + DMAENABLE - DMA_BASE, 1 << dmaChNum, 1 << dmaChNum);
     
     //configure the DMA header to point to our control block:
-    volatile struct DmaChannelHeader *dmaHeader = (volatile struct DmaChannelHeader*)(dmaBaseMem + DMACH(dmaChNum) - DMA_BASE);
+    volatile struct DmaChannelHeader *dmaHeader = (volatile struct DmaChannelHeader*)(dmaBaseMem + (DMACH(dmaChNum) - DMA_BASE)/4); //dmaBaseMem is a uint32_t ptr, so divide by 4 before adding byte offset
     dmaHeader->CS = DMA_CS_RESET; //make sure to disable dma first.
     sleep(1); //give time for the reset command to be handled.
     dmaHeader->DEBUG = DMA_DEBUG_READ_ERROR | DMA_DEBUG_FIFO_ERROR | DMA_DEBUG_READ_LAST_NOT_SET_ERROR; // clear debug error flags
