@@ -35,6 +35,7 @@ For more information, please refer to <http://unlicense.org/>
 #include <stdlib.h> //for exit
 #include <fcntl.h> //for file opening
 #include <stdint.h> //for uint32_t
+#include <string.h> //for memset
 
 #define PAGE_SIZE 4096 //mmap maps pages of memory, so we must give it multiples of this size
 
@@ -141,10 +142,10 @@ struct DmaControlBlock {
 void makeVirtPhysPage(void** virtAddr, void** physAddr) {
     *virtAddr = valloc(PAGE_SIZE); //allocate one page of RAM
 
-    //force page into RAM and then lock it ther:
+    //force page into RAM and then lock it there:
     ((int*)*virtAddr)[0] = 1;
     mlock(*virtAddr, PAGE_SIZE);
-    ((int*)*virtAddr)[0] = 0; //undo the change we made above. This way the page should be zero-filled
+    memset(*virtAddr, 0, PAGE_SIZE); //zero-fill the page for convenience
 
     //Magic to determine the physical address for this page:
     uint64_t pageInfo;
