@@ -142,9 +142,22 @@ For more information, please refer to <http://unlicense.org/>
 //config settings:
 #define PWM_FIFO_SIZE 1 //The DMA transaction is paced through the PWM FIFO. The PWM FIFO consumes 1 word every N uS (set in clock settings). Once the fifo has fewer than PWM_FIFO_SIZE words available, it will request more data from DMA. Thus, a high buffer length will be more resistant to clock drift, but may occasionally request multiple frames in a short succession (faster than FRAME_PER_SEC) in the presence of bus contention, whereas a low buffer length will always space frames AT LEAST 1/FRAMES_PER_SEC seconds apart, but may experience clock drift.
 #define SOURCE_BUFFER_FRAMES 8192 //number of gpio timeslices to buffer. These are processed at ~1 million/sec. So 1000 framse is 1 ms. Using a power-of-two is a good idea as it simplifies some of the arithmetic (modulus operations)
-#define FRAMES_PER_SEC 1000000 //Note that this number is currently hard-coded in the form of clock settings. Changing this without changing the clock settings will cause problems
 #define SCHED_PRIORITY 30 //Linux scheduler priority. Higher = more realtime
 
+#define NOMINAL_CLOCK_FREQ 500000000 //PWM Clock runs at 500 MHz, unless overclocking
+#define BITS_PER_CLOCK 10 //# of bits to be used in each PWM cycle. Effectively acts as a clock divisor for us, since the PWM clock is in bits/second
+#define CLOCK_DIV 200 //# to divide the NOMINAL_CLOCK_FREQ by before passing it to the PWM peripheral.
+//gpio frames per second is a product of the nominal clock frequency divided by BITS_PER_CLOCK and divided again by CLOCK_DIV
+//At 500,000 frames/sec, memory bandwidth does not appear to be an issue (jitter of -1 to +2 uS)
+//attempting 1,000,000 frames/sec results in an actual 800,000 frames/sec, though with a lot of jitter.
+//Note that these numbers might very with heavy network or usb usage.
+//  eg at 500,000 fps, with 1MB/sec network download, jitter is -1 to +30 uS
+//     at 250,000 fps, with 1MB/sec network download, jitter is only -3 to +3 uS
+#define FRAMES_PER_SEC NOMINAL_CLOCK_FREQ/BITS_PER_CLOCK/CLOCK_DIV
+#define SEC_TO_FRAME(s) ((int64_t)(s)*FRAMES_PER_SEC)
+#define USEC_TO_FRAME(u) (SEC_TO_FRAME(u)/1000000)
+#define FRAME_TO_SEC(f) ((int64_t)(f)*BITS_PER_CLOCK*CLOCK_DIV/NOMINAL_CLOCK_FREQ)
+#define FRAME_TO_USEC(f) FRAME_TO_SEC((int64_t)(f)*1000000)
 
 #define TIMER_BASE   0x20003000
 #define TIMER_CLO    0x00000004 //lower 32-bits of 1 MHz timer
@@ -603,11 +616,14 @@ void sleepUntilMicros(uint64_t micros, volatile uint32_t* timerBaseMem) {
     }
 }
 
+
+//int64_t _lastTimeAtFrame0;
+
 void queue(int pin, int mode, uint64_t micros, struct GpioBufferFrame* srcArray, volatile uint32_t* timerBaseMem, struct DmaChannelHeader* dmaHeader) {
     //This function takes a pin, a mode (0=off, 1=on) and a time. It then manipulates the GpioBufferFrame array in order to ensure that the pin switches to the desired level at the desired time. It will sleep if necessary.
     //Sleep until we are on the right iteration of the circular buffer (otherwise we cannot queue the command)
     uint64_t callTime = readSysTime(timerBaseMem); //only used for debugging
-    uint64_t desiredTime = micros-((uint64_t)SOURCE_BUFFER_FRAMES)*1000000/FRAMES_PER_SEC;
+    uint64_t desiredTime = micros - FRAME_TO_USEC(SOURCE_BUFFER_FRAMES);
     sleepUntilMicros(desiredTime, timerBaseMem);
     uint64_t awakeTime = readSysTime(timerBaseMem); //only used for debugging
     
@@ -625,11 +641,20 @@ void queue(int pin, int mode, uint64_t micros, struct GpioBufferFrame* srcArray,
         curTime2 = readSysTime(timerBaseMem);
         ++tries;
     } while (curTime2-curTime1 > 1 || (srcIdx & DMA_CB_TXFR_YLENGTH_MASK)); //allow 1 uS variability.
+    //Uncomment the following lines and the above declaration of _lastTimeAtFrame0 to log jitter information:
+    //int64_t curTimeAtFrame0 = curTime2 - FRAME_TO_USEC(srcIdx);
+    //printf("Timing diff: %lli\n", (curTimeAtFrame0-_lastTimeAtFrame0)%FRAME_TO_USEC(SOURCE_BUFFER_FRAMES));
+    //_lastTimeAtFrame0 = curTimeAtFrame0;
+    //if timing diff is positive, then  then curTimeAtFrame0 > _lastTimeAtFrame0
+    //curTime2 - srcIdx2 > curTime1 - srcIdx1
+    //curTime2 - curTime2 > srcIdx2 - srcIdx1
+    //more uS have elapsed than frames; DMA cannot keep up
+    
     //calculate the frame# at which to place the event:
     int usecFromNow = micros - curTime2;
-    int framesFromNow = usecFromNow*FRAMES_PER_SEC/1000000; //Note: may cause overflow if FRAMES_PER_SECOND is not a multiple of 1000000 or if optimizations are COMPLETELY disabled.
+    int framesFromNow = USEC_TO_FRAME(usecFromNow);
     if (framesFromNow < 10) { //Not safe to schedule less than ~10uS into the future (note: should be operating on usecFromNow, not framesFromNow)
-        printf("Warning: behind schedule: %i (%i) (tries: %i) (sleep %llu -> %llu (wanted %llu))\n", framesFromNow, usecFromNow, tries, callTime, awakeTime, desiredTime);
+        printf("Warning: behind schedule: %i (%i uSec) (tries: %i) (sleep %llu -> %llu (wanted %llu))\n", framesFromNow, usecFromNow, tries, callTime, awakeTime, desiredTime);
         framesFromNow = 10;
     }
     int newIdx = (srcIdx + framesFromNow)%SOURCE_BUFFER_FRAMES;
@@ -694,7 +719,7 @@ int main() {
     //configure PWM clock:
     *(clockBaseMem + CM_PWMCTL/4) = CM_PWMCTL_PASSWD | ((*(clockBaseMem + CM_PWMCTL/4))&(~CM_PWMCTL_ENAB)); //disable clock
     do {} while (*(clockBaseMem + CM_PWMCTL/4) & CM_PWMCTL_BUSY); //wait for clock to deactivate
-    *(clockBaseMem + CM_PWMDIV/4) = CM_PWMDIV_PASSWD | CM_PWMDIV_DIVI(50); //configure clock divider (running at 500MHz undivided)
+    *(clockBaseMem + CM_PWMDIV/4) = CM_PWMDIV_PASSWD | CM_PWMDIV_DIVI(CLOCK_DIV); //configure clock divider (running at 500MHz undivided)
     *(clockBaseMem + CM_PWMCTL/4) = CM_PWMCTL_PASSWD | CM_PWMCTL_SRC_PLLD; //source 500MHz base clock, no MASH.
     *(clockBaseMem + CM_PWMCTL/4) = CM_PWMCTL_PASSWD | CM_PWMCTL_SRC_PLLD | CM_PWMCTL_ENAB; //enable clock
     do {} while (*(clockBaseMem + CM_PWMCTL/4) & CM_PWMCTL_BUSY == 0); //wait for clock to activate
@@ -710,7 +735,7 @@ int main() {
     usleep(100);
     
     pwmHeader->DMAC = PWM_DMAC_EN | PWM_DMAC_DREQ(PWM_FIFO_SIZE) | PWM_DMAC_PANIC(PWM_FIFO_SIZE); //DREQ is activated at queue < PWM_FIFO_SIZE
-    pwmHeader->RNG1 = 10; //used only for timing purposes; #writes to PWM FIFO/sec = PWM CLOCK / RNG1
+    pwmHeader->RNG1 = BITS_PER_CLOCK; //used only for timing purposes; #writes to PWM FIFO/sec = PWM CLOCK / RNG1
     pwmHeader->CTL = PWM_CTL_REPEATEMPTY1 | PWM_CTL_ENABLE1 | PWM_CTL_USEFIFO1;
     
     //allocate memory for the control blocks
@@ -801,3 +826,4 @@ int main() {
     close(memfd);
     return 0;
 }
+
