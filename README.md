@@ -7,9 +7,14 @@ Just type `make`, and then `sudo ./dma-example` (must use sudo to get permission
 
 The example simply copies the string "hello world" from one place in memory to another through the use of the Raspberry Pi's DMA peripheral.
 
-Run `sudo ./dma-gpio` for an example which toggles a GPIO output pin at 500Hz using DMA. This code (dma-gpio.c) creates a 8ms circular buffer of future output states for all 64 IOs and uses DMA to sequentially copy this buffer into the memory-mapped GPIO registers at a rate of 1 million frames per second. This allows one to output precise waveforms to any GPIO pin without worrying about Linux task scheduling. The PWM peripheral is used for pacing the DMA transaction, so simultaneous audio output will likely cause errors. Heavy network or USB usage will decrease the timing accuracy because of bus contention.
+Run `sudo ./dma-gpio` for an example which toggles a GPIO output pin at 500Hz using DMA. This code (dma-gpio.c) creates a 8ms circular buffer of future output states for all 64 IOs and uses DMA to sequentially copy this buffer into the memory-mapped GPIO registers at a rate of 250,000 frames per second. This allows one to output precise waveforms to any GPIO pin without worrying about Linux task scheduling. The PWM peripheral is used for pacing the DMA transaction, so simultaneous audio output will likely cause errors. Heavy network or USB usage will decrease the timing accuracy for frame rates of 500,000+ fps, due to bus-contention, but even downloading a file at 1MB/sec only has a *very* small impact at 250,000 fps.
 
 Some code, namely for translating virtual addresses to physical ones within dma-example.c, was based on that found in the Raspberry Pi FM Transmitter which I *think* is by either Oliver Mattos or Oskar Weigl, but their website has been down for a while now. Some of the code can still be found here: http://www.raspians.com/turning-the-raspberry-pi-into-an-fm-transmitter/
+
+Problems
+======
+
+The virtual->physical mapping function in `dma-example.c` is not cache-coherent. That means that the dma engine might see different data than the cpu. The equivalent functions in `dma-gpio.c` behave correctly, so it is only a matter of porting that code once I have time.
 
 License
 ======
