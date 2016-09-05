@@ -28,11 +28,6 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <http://unlicense.org/>
 */
 
-/*
- * processor documentation is at: http://www.raspberrypi.org/wp-content/uploads/2012/02/BCM2835-ARM-Peripherals.pdf
- * pg 38 for DMA
- */
- 
 #include <sys/mman.h> //for mmap
 #include <unistd.h> //for NULL
 #include <stdio.h> //for printf
@@ -41,21 +36,18 @@ For more information, please refer to <http://unlicense.org/>
 #include <stdint.h> //for uint32_t
 #include <string.h> //for memset
 
+#include "hw-addresses.h" // for DMA addresses, etc.
+
 #define PAGE_SIZE 4096 //mmap maps pages of memory, so we must give it multiples of this size
 
-//physical addresses for the DMA peripherals, as found in the processor documentation:
-#define DMA_BASE 0x20007000
+
+//-------- Relative offsets for DMA registers
 //DMA Channel register sets (format of these registers is found in DmaChannelHeader struct):
-#define DMACH0   0x20007000
-#define DMACH1   0x20007100
-#define DMACH2   0x20007200
-#define DMACH3   0x20007300
-//...
-#define DMACH(n) (DMACH0 + (n)*0x100)
+#define DMACH(n) (0x100*(n))
 //Each DMA channel has some associated registers, but only CS (control and status), CONBLK_AD (control block address), and DEBUG are writeable
 //DMA is started by writing address of the first Control Block to the DMA channel's CONBLK_AD register and then setting the ACTIVE bit inside the CS register (bit 0)
 //Note: DMA channels are connected directly to peripherals, so physical addresses should be used (affects control block's SOURCE, DEST and NEXTCONBK addresses).
-#define DMAENABLE 0x20007ff0 //bit 0 should be set to 1 to enable channel 0. bit 1 enables channel 1, etc.
+#define DMAENABLE 0x00000ff0 //bit 0 should be set to 1 to enable channel 0. bit 1 enables channel 1, etc.
 
 //flags used in the DmaChannelHeader struct:
 #define DMA_CS_RESET (1<<31)
@@ -239,10 +231,10 @@ int main() {
     printf("destination was initially: '%s'\n", (char*)virtDestPage);
     
     //enable DMA channel (it's probably already enabled, but we want to be sure):
-    writeBitmasked(dmaBaseMem + DMAENABLE - DMA_BASE, 1 << dmaChNum, 1 << dmaChNum);
+    writeBitmasked(dmaBaseMem + DMAENABLE, 1 << dmaChNum, 1 << dmaChNum);
     
     //configure the DMA header to point to our control block:
-    volatile struct DmaChannelHeader *dmaHeader = (volatile struct DmaChannelHeader*)(dmaBaseMem + (DMACH(dmaChNum) - DMA_BASE)/4); //dmaBaseMem is a uint32_t ptr, so divide by 4 before adding byte offset
+    volatile struct DmaChannelHeader *dmaHeader = (volatile struct DmaChannelHeader*)(dmaBaseMem + (DMACH(dmaChNum))/4); //dmaBaseMem is a uint32_t ptr, so divide by 4 before adding byte offset
     dmaHeader->CS = DMA_CS_RESET; //make sure to disable dma first.
     sleep(1); //give time for the reset command to be handled.
     dmaHeader->DEBUG = DMA_DEBUG_READ_ERROR | DMA_DEBUG_FIFO_ERROR | DMA_DEBUG_READ_LAST_NOT_SET_ERROR; // clear debug error flags

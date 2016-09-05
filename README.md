@@ -3,7 +3,8 @@ Raspberry-Pi-DMA-Example
 
 Simplest example of copying memory from one region to another using DMA ("Direct Memory Access") in userland
 
-Just type `make`, and then `sudo ./dma-example` (must use sudo to get permissions for writing to DMA peripheral)
+Just type `make <target>` where `target` is either `rpi1`, `rpi2`, or `rpi3`, and then `sudo ./dma-example` (must use sudo to get permissions for writing to DMA peripheral).
+Type `make help` for more info.
 
 The example simply copies the string "hello world" from one place in memory to another through the use of the Raspberry Pi's DMA peripheral.
 
@@ -14,7 +15,9 @@ Some code, namely for translating virtual addresses to physical ones within dma-
 Problems
 ======
 
-The virtual->physical mapping function in `dma-example.c` is not cache-coherent. That means that the dma engine might see different data than the cpu. The equivalent functions in `dma-gpio.c` behave correctly, so it is only a matter of porting that code once I have time.
+The virtual->physical mapping function in `dma-example.c` is not cache-coherent. That means that the dma engine might see different data than the cpu. The equivalent functions in `dma-gpio.c` behave correctly, so it is only a matter of porting that code.
+
+The code hasn't been tested extensively on non-Pi v1 (e.g. Pi2, Pi3, Pi Zero). There may be some latent bugs on other hardware versions. Please report any if found.
 
 License
 ======

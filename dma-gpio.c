@@ -139,6 +139,8 @@ For more information, please refer to <http://unlicense.org/>
 #include <errno.h> //for errno
 #include <pthread.h> //for pthread_setschedparam
 
+#include "hw-addresses.h"
+
 //config settings:
 #define PWM_FIFO_SIZE 1 //The DMA transaction is paced through the PWM FIFO. The PWM FIFO consumes 1 word every N uS (set in clock settings). Once the fifo has fewer than PWM_FIFO_SIZE words available, it will request more data from DMA. Thus, a high buffer length will be more resistant to clock drift, but may occasionally request multiple frames in a short succession (faster than FRAME_PER_SEC) in the presence of bus contention, whereas a low buffer length will always space frames AT LEAST 1/FRAMES_PER_SEC seconds apart, but may experience clock drift.
 #define SOURCE_BUFFER_FRAMES 8192 //number of gpio timeslices to buffer. These are processed at ~1 million/sec. So 1000 framse is 1 ms. Using a power-of-two is a good idea as it simplifies some of the arithmetic (modulus operations)
@@ -159,13 +161,10 @@ For more information, please refer to <http://unlicense.org/>
 #define FRAME_TO_SEC(f) ((int64_t)(f)*BITS_PER_CLOCK*CLOCK_DIV/NOMINAL_CLOCK_FREQ)
 #define FRAME_TO_USEC(f) FRAME_TO_SEC((int64_t)(f)*1000000)
 
-#define TIMER_BASE   0x20003000
 #define TIMER_CLO    0x00000004 //lower 32-bits of 1 MHz timer
 #define TIMER_CHI    0x00000008 //upper 32-bits
  
 
-#define GPIO_BASE 0x20200000 //base address of the GPIO control registers.
-#define GPIO_BASE_BUS 0x7E200000 //this is the physical bus address of the GPIO module. This is only used when other peripherals directly connected to the bus (like DMA) need to read/write the GPIOs
 #define PAGE_SIZE 4096 //mmap maps pages of memory, so we must give it multiples of this size
 #define GPFSEL0   0x00000000 //gpio function select. There are 6 of these (32 bit registers)
 #define GPFSEL1   0x00000004
@@ -191,7 +190,6 @@ For more information, please refer to <http://unlicense.org/>
 #define GPLEV0    0x00000034 //GPIO Pin Level. There are 2 of these (32 bits each)
 
 //physical addresses for the DMA peripherals, as found in the processor documentation:
-#define DMA_BASE 0x20007000
 #define DMACH(n) (0x100*(n))
 //DMA Channel register sets (format of these registers is found in DmaChannelHeader struct):
 //#define DMACH0   0x00000000
@@ -244,8 +242,6 @@ For more information, please refer to <http://unlicense.org/>
 //Dma Control Blocks must be located at addresses that are multiples of 32 bytes
 #define DMA_CONTROL_BLOCK_ALIGNMENT 32 
 
-#define PWM_BASE 0x2020C000
-#define PWM_BASE_BUS 0x7E20C000
 #define PWM_CTL  0x00000000 //control register
 #define PWM_STA  0x00000004 //status register
 #define PWM_DMAC 0x00000008 //DMA control register
@@ -274,7 +270,6 @@ For more information, please refer to <http://unlicense.org/>
 #define PWM_DMAC_DREQ(D) (((D)&0xff)<<0)
 
 //The following is undocumented :( Taken from http://www.scribd.com/doc/127599939/BCM2835-Audio-clocks
-#define CLOCK_BASE 0x20101000
 #define CM_PWMCTL 0xa0
 #define CM_PWMDIV 0xa4
 //each write to CM_PWMTL and CM_PWMDIV requires the password to be written:
