@@ -147,10 +147,10 @@ void makeVirtPhysPage(void** virtAddr, void** physAddr) {
     //Magic to determine the physical address for this page:
     uint64_t pageInfo;
     int file = open("/proc/self/pagemap", 'r');
-    lseek(file, ((uint32_t)*virtAddr)/PAGE_SIZE*8, SEEK_SET);
+    lseek(file, ((size_t)*virtAddr)/PAGE_SIZE*8, SEEK_SET);
     read(file, &pageInfo, 8);
 
-    *physAddr = (void*)(uint32_t)(pageInfo*PAGE_SIZE);
+    *physAddr = (void*)(size_t)(pageInfo*PAGE_SIZE);
     printf("makeVirtPhysPage virtual to phys: %p -> %p\n", *virtAddr, *physAddr);
 }
 
