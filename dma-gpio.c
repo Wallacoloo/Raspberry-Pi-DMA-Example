@@ -305,7 +305,7 @@ struct DmaChannelHeader {
         //30    ABORT; set to 1 to abort current DMA control block (next one will be loaded & continue)
         //29    DISDEBUG; set to 1 and DMA won't be paused when debug signal is sent
         //28    WAIT_FOR_OUTSTANDING_WRITES(0x10000000); set to 1 and DMA will wait until peripheral says all writes have gone through before loading next CB
-        //24-74 reserved
+        //24-27 reserved
         //20-23 PANIC_PRIORITY; 0 is lowest priority
         //16-19 PRIORITY; bus scheduling priority. 0 is lowest
         //9-15  reserved
