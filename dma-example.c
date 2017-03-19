@@ -231,7 +231,7 @@ int main() {
     printf("destination was initially: '%s'\n", (char*)virtDestPage);
     
     //enable DMA channel (it's probably already enabled, but we want to be sure):
-    writeBitmasked(dmaBaseMem + DMAENABLE, 1 << dmaChNum, 1 << dmaChNum);
+    writeBitmasked(dmaBaseMem + DMAENABLE/4, 1 << dmaChNum, 1 << dmaChNum);
     
     //configure the DMA header to point to our control block:
     volatile struct DmaChannelHeader *dmaHeader = (volatile struct DmaChannelHeader*)(dmaBaseMem + (DMACH(dmaChNum))/4); //dmaBaseMem is a uint32_t ptr, so divide by 4 before adding byte offset

@@ -776,7 +776,7 @@ int main() {
     //If using LITE channels, then we can't use the STRIDE feature, so that narrows it down to ch 4 and ch 5.
     int dmaCh = 5; 
     //enable DMA channel (it's probably already enabled, but we want to be sure):
-    writeBitmasked(dmaBaseMem + DMAENABLE, 1 << dmaCh, 1 << dmaCh);
+    writeBitmasked(dmaBaseMem + DMAENABLE/4, 1 << dmaCh, 1 << dmaCh);
     
     //configure the DMA header to point to our control block:
     dmaHeader = (struct DmaChannelHeader*)(dmaBaseMem + DMACH(dmaCh)/4); //must divide by 4, as dmaBaseMem is uint32_t*
